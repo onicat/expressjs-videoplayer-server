@@ -1,16 +1,59 @@
 const express = require('express');
 const fs = require('fs');
-const getPathNode = require('./logic/getPathNode');
+const multer = require("multer")  
 
+const getPathNode = require('./logic/getPathNode');
+const parseVideoExtension = require('./logic/parseVideoExtension');
+const saveFileInPaths = require('./logic/saveFileInPaths');
 const paths = require('./paths');
 
 const app = express();
 const port = 3005;
 
-app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'videos/');
+  },
+  filename: function (req, file, cb) {
+    const extension = parseVideoExtension(file.mimetype);
+    
+    if (extension === null) return;
+    
+    const filename = `${file.fieldname}-${Date.now()}.${extension}`
+
+    cb(null, filename);
+  }
+});
+
+const upload = multer({storage});
+
+// middleware for CORS
+
+app.use((req, res, next) => {  
+  const ACRHeaders = req.get('Access-Control-Request-Headers');
+
+  if (ACRHeaders) {
+    let allowHeaders = '';
+    
+    for (let header of ACRHeaders.split(',')) {
+      if (header === "content-type") {
+        allowHeaders += header;
+      }
+    }
+
+    res.set('Access-Control-Allow-Headers', allowHeaders);
+    
+    if (req.get('Access-Control-Request-Method') === 'POST') {
+      res.set('Access-Control-Allow-Methods', 'POST');
+    }
+  }
+
+  res.set('Access-Control-Allow-Origin', '*');
+
   next();
 });
+
+// routes
 
 app.get('/paths', (req, res) => {
   res.status = '200';
@@ -37,6 +80,15 @@ app.get('/videos', (req, res) => {
   });
   
   readStream.pipe(res);
+});
+
+app.post('/videos', upload.single('video'), (req, res) => {
+  const virtualPath = req.query.path;
+  
+  saveFileInPaths(req.file, virtualPath, paths);
+
+  res.status = 200;
+  res.end();
 });
 
 app.listen(port, () => {
